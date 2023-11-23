@@ -1,15 +1,17 @@
 import NextAuth from 'next-auth';
-import Providers from 'next-auth/providers';
+import Credentials from 'next-auth/providers/credentials';
 
 import { verifyPassword } from '../../../lib/auth';
 import { connectToDatabase } from '../../../lib/db';
 
-export default NextAuth({
+/** @type {import('next-auth').AuthOptions} */
+export const authOptions = {
   session: {
-    jwt: true,
+    strategy: 'jwt',
   },
+  secret: process.env.NEXTAUTH_SECRET || 'thequickbrownfox',
   providers: [
-    Providers.Credentials({
+    Credentials({
       async authorize(credentials) {
         const client = await connectToDatabase();
 
@@ -36,8 +38,30 @@ export default NextAuth({
 
         client.close();
         return { email: user.email };
-        
       },
     }),
   ],
-});
+  callbacks: {
+    // modify the 'user' object returned
+    // from the credentials provider above
+    async jwt({ user, token }) {
+      if (user) {
+        token.user = { ...user };
+      }
+      return token;
+    },
+    // Modify the 'session' object
+    async session({ session, token }) {
+      if (token.user) {
+        // [FIX] session 'user' object should only have an email
+        // field
+        session.user = token.user;
+        return session;
+      }
+      // NO JWT -- return null
+      return null;
+    },
+  },
+};
+
+export default NextAuth(authOptions);
